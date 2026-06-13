@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเช็กชื่อเข้าเรียน Smart Attendance</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS Config for bright & friendly colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        },
+                        present: '#10b981', // Emerald
+                        absent: '#ef4444',  // Rose
+                        late: '#f59e0b',    // Amber
+                        leave: '#3b82f6',   // Blue
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- SheetJS (XLSX) CDN สำหรับ Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts - Prompt (Thai) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col text-slate-800">
+
+    <!-- Header / Navbar -->
+    <header class="bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-lg shrink-0">
+        <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-white/10 rounded-2xl backdrop-blur-sm">
+                    <i data-lucide="check-square" class="w-8 h-8 text-yellow-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">Smart Attendance</h1>
+                    <p class="text-xs text-brand-100">ระบบเช็กชื่อเข้าเรียนอัจฉริยะสำหรับครูยุคใหม่</p>
+                </div>
+            </div>
+            
+            <!-- Quick Navigation -->
+            <nav class="flex bg-white/10 p-1 rounded-xl backdrop-blur-sm overflow-x-auto w-full sm:w-auto">
+                <button onclick="switchTab('checkin')" id="btn-tab-checkin" class="tab-btn flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 bg-white text-brand-700 shadow-sm w-full sm:w-auto">
+                    <i data-lucide="calendar-check" class="w-4 h-4"></i>
+                    เช็กชื่อวันนี้
+                </button>
+                <button onclick="switchTab('students')" id="btn-tab-students" class="tab-btn flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 text-white hover:bg-white/10 w-full sm:w-auto">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    จัดการนักเรียน
+                </button>
+                <button onclick="switchTab('stats')" id="btn-tab-stats" class="tab-btn flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 text-white hover:bg-white/10 w-full sm:w-auto">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                    สถิติ & สรุปผล
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        
+        <!-- Connection Status & Sync Bar -->
+        <div class="mb-6 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <span id="g-status-indicator" class="relative flex h-3.5 w-3.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+                </span>
+                <div>
+                    <p class="text-sm font-semibold" id="connection-title">เชื่อมต่อแบบ Local Storage (ออฟไลน์)</p>
+                    <p class="text-xs text-slate-500" id="connection-desc">บันทึกข้อมูลในเครื่องเบื้องต้น คุณสามารถตั้งค่าเชื่อมโยงกับ Google Sheet ได้</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                <button onclick="syncWithGoogleSheet()" id="btn-sync" class="hidden flex items-center justify-center gap-2 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-sm font-semibold transition-all border border-emerald-200">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    ซิงก์กับ Google Sheet
+                </button>
+                <button onclick="openSettingsModal()" class="flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-all">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    ตั้งค่า Google Sheet
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. TAB: CHECK-IN -->
+        <div id="tab-checkin" class="tab-content space-y-6">
+            <!-- Summary Widgets -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-3 bg-brand-50 text-brand-500 rounded-xl">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500">นักเรียนทั้งหมด</p>
+                        <p class="text-xl font-bold" id="stat-total-students">0</p>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-3 bg-emerald-50 text-present rounded-xl">
+                        <i data-lucide="user-check" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500">มาเรียนวันนี้</p>
+                        <p class="text-xl font-bold text-present" id="stat-present-today">0</p>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-3 bg-rose-50 text-absent rounded-xl">
+                        <i data-lucide="user-x" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500">ขาดเรียนวันนี้</p>
+                        <p class="text-xl font-bold text-absent" id="stat-absent-today">0</p>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div class="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                        <i data-lucide="percent" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-500">อัตราการเข้าเรียน</p>
+                        <p class="text-xl font-bold text-indigo-600" id="stat-rate-today">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Selector & Batch Actions -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-3 w-full sm:w-auto">
+                    <label for="checkin-date" class="text-sm font-semibold shrink-0">เลือกวันที่:</label>
+                    <input type="date" id="checkin-date" onchange="loadAttendanceForDate()" class="w-full sm:w-auto px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium">
+                </div>
+                <div class="flex gap-2 w-full sm:w-auto justify-end">
+                    <button onclick="setAllAttendance('present')" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3  py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-xl transition-all">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                        มาเรียนทั้งหมด
+                    </button>
+                    <button onclick="setAllAttendance('absent')" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl transition-all">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        ขาดเรียนทั้งหมด
+                    </button>
+                </div>
+            </div>
+
+            <!-- Student List Grid -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex justify-between items-center">
+                    <h2 class="font-bold text-slate-700 flex items-center gap-2">
+                        <i data-lucide="clipboard-list" class="w-5 h-5 text-brand-500"></i>
+                        รายชื่อสำหรับเช็กชื่อ
+                    </h2>
+                    <span class="text-xs text-slate-500" id="unsaved-badge">ระบบจะบันทึกข้อมูลอัตโนมัติ</span>
+                </div>
+                
+                <div class="divide-y divide-slate-100 max-h-[500px] overflow-y-auto" id="checkin-list-container">
+                    <!-- Student Row Template will be injected here -->
+                    <div class="p-8 text-center text-slate-400">
+                        <i data-lucide="users" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                        <p>ไม่มีรายชื่อนักเรียนในระบบ กรุณาเพิ่มรายชื่อที่แท็บ "จัดการนักเรียน"</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. TAB: STUDENTS MANAGEMENT -->
+        <div id="tab-students" class="tab-content space-y-6 hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Add Student Form -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-fit space-y-4">
+                    <h3 class="font-bold text-lg text-slate-700 flex items-center gap-2">
+                        <i data-lucide="user-plus" class="w-5 h-5 text-brand-500"></i>
+                        เพิ่มนักเรียนรายคน
+                    </h3>
+                    <form id="add-student-form" onsubmit="addStudent(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1.5">เลขที่ / รหัสนักเรียน</label>
+                            <input type="text" id="student-roll" required placeholder="เช่น 1 หรือ 001" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1.5">ชื่อ - นามสกุล</label>
+                            <input type="text" id="student-name" required placeholder="เด็กชาย สมชาย ใจดี" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <button type="submit" class="w-full py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-sm">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            เพิ่มรายชื่อ
+                        </button>
+                    </form>
+
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-slate-200"></div>
+                        <span class="flex-shrink mx-4 text-slate-400 text-xs">หรือ</span>
+                        <div class="flex-grow border-t border-slate-200"></div>
+                    </div>
+
+                    <!-- Bulk Import Form -->
+                    <div class="space-y-3">
+                        <h4 class="font-bold text-sm text-slate-700 flex items-center gap-1.5">
+                            <i data-lucide="file-spreadSheet" class="w-4.5 h-4.5 text-emerald-500"></i>
+                            นำเข้ารายชื่อหลายคน (Bulk Import)
+                        </h4>
+                        <p class="text-xs text-slate-500">วางรายชื่อนักเรียนบรรทัดละ 1 คน (ชื่อจะถูกจัดคู่กับเลขที่อัตโนมัติ)</p>
+                        <textarea id="bulk-names" rows="4" placeholder="เช่น:&#10;นายสมเจตน์ รักดี&#10;นางสาวพิมพิลา แสงงาม" class="w-full p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"></textarea>
+                        <button onclick="bulkImportStudents()" class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm shadow-sm">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            นำเข้ารายชื่อทั้งหมด
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Student List Table -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden lg:col-span-2">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex justify-between items-center">
+                        <h2 class="font-bold text-slate-700 flex items-center gap-2">
+                            <i data-lucide="users" class="w-5 h-5 text-brand-500"></i>
+                            รายชื่อนักเรียนทั้งหมด (<span id="count-student-list">0</span> คน)
+                        </h2>
+                        <button onclick="clearAllStudents()" class="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            ลบรายชื่อทั้งหมด
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto max-h-[500px]">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-200 bg-slate-100/50 text-slate-500 text-xs font-semibold uppercase">
+                                    <th class="px-6 py-3 text-center w-20">เลขที่</th>
+                                    <th class="px-6 py-3">ชื่อ - นามสกุล</th>
+                                    <th class="px-6 py-3 text-right">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-table-body" class="divide-y divide-slate-100">
+                                <!-- Student rows will be generated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. TAB: STATISTICS & REPORTS -->
+        <div id="tab-stats" class="tab-content space-y-6 hidden">
+            <!-- Filter & Excel Export Panel -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h2 class="font-bold text-lg text-slate-700">ส่งออกรายงานและสถิติสะสม</h2>
+                    <p class="text-xs text-slate-500">ดาวน์โหลดรายงานข้อมูลการเข้าเรียนเป็นไฟล์ Excel</p>
+                </div>
+                <div class="flex flex-wrap gap-3 w-full md:w-auto justify-end">
+                    <button onclick="exportToExcel()" class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-lg">
+                        <i data-lucide="download" class="w-5 h-5"></i>
+                        ส่งออกข้อมูลเป็น Excel (.xlsx)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Charts / Summary Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Present rate rank -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 col-span-1 md:col-span-2">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                        <i data-lucide="award" class="w-5 h-5 text-emerald-500"></i>
+                        สถิติการเข้าเรียนรายบุคคล (เรียงตามร้อยละการเข้าเรียน)
+                    </h3>
+                    <div class="overflow-y-auto max-h-[350px] divide-y divide-slate-100" id="individual-stats-list">
+                        <!-- Dynamically populated list -->
+                    </div>
+                </div>
+
+                <!-- Overview of recorded days -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                    <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                        <i data-lucide="calendar" class="w-5 h-5 text-indigo-500"></i>
+                        วันที่บันทึกแล้วทั้งหมด
+                    </h3>
+                    <div class="overflow-y-auto max-h-[350px]" id="recorded-dates-list">
+                        <!-- Dynamically populated recorded dates -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <i data-lucide="settings" class="w-5 h-5 text-brand-500"></i>
+                    ตั้งค่าเชื่อมโยง Google Sheet
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-4 text-sm leading-relaxed">
+                <div class="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-2xl space-y-1">
+                    <h4 class="font-bold flex items-center gap-1.5">
+                        <i data-lucide="info" class="w-4.5 h-4.5"></i>
+                        ระบบตรวจเช็กและสร้างตารางอัตโนมัติ (Auto-Generator)
+                    </h4>
+                    <p class="text-xs">โค้ด Apps Script ด้านล่างนี้ได้รับการพัฒนาให้**ตรวจเช็กและสร้างชีตย่อยและหัวข้อที่จำเป็นทั้งหมดในไฟล์ Google Sheet ให้คุณโดยอัตโนมัติ** คุณไม่จำเป็นต้องสร้างหัวตารางเองเลย!</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Google Web App URL</label>
+                    <input type="text" id="g-sheet-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono text-xs">
+                </div>
+
+                <div class="border-t border-slate-100 pt-4 space-y-3">
+                    <h4 class="font-bold text-slate-700 flex items-center gap-1.5">
+                        <i data-lucide="terminal" class="w-4.5 h-4.5 text-indigo-500"></i>
+                        ขั้นตอนการใช้โค้ดสร้างตารางอัตโนมัติ:
+                    </h4>
+                    <ol class="list-decimal pl-5 space-y-2 text-slate-600 text-xs">
+                        <li>สร้างไฟล์ Google Sheets เปล่าขึ้นมา 1 ไฟล์</li>
+                        <li>กดที่เมนู <strong class="text-slate-800">ส่วนขยาย (Extensions)</strong> &gt; <strong class="text-slate-800">Apps Script</strong></li>
+                        <li>ลบโค้ดเดิมในนั้นออกทั้งหมด แล้วคัดลอกโค้ดด้านล่างนี้ไปวาง</li>
+                        <li>กดไอคอนบันทึก (แผ่นดิสก์) จากนั้นกดปุ่ม <strong class="text-slate-800">ทำให้ใช้งานได้ (Deploy)</strong> &gt; <strong class="text-slate-800">การทำให้ใช้งานได้ใหม่ (New deployment)</strong></li>
+                        <li>เลือกประเภทเป็น <strong class="text-slate-800">เว็บแอป (Web app)</strong></li>
+                        <li>ตั้งค่าผู้มีสิทธิ์เข้าถึงเป็น <strong class="text-slate-800">ทุกคน (Anyone)</strong> และกด Deploy ยอมรับสิทธิ์การเข้าถึง</li>
+                        <li>คัดลอก <strong class="text-brand-600 font-bold">URL เว็บแอป</strong> ที่ได้มาวางในช่องด้านบน แล้วกด "บันทึกตั้งค่า" เป็นอันเสร็จสิ้น!</li>
+                    </ol>
+                </div>
+
+                <!-- Code Block for Apps Script (Auto-Table Generator Included) -->
+                <div class="relative">
+                    <span class="absolute right-3 top-3 bg-slate-800 text-slate-400 text-xxs px-2 py-1 rounded">Apps Script (Auto-Create)</span>
+                    <pre class="bg-slate-900 text-emerald-400 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-48 whitespace-pre-wrap select-all">
+function doGet(e) {
+  var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = activeSpreadsheet.getSheetByName("Students");
+  
+  // สร้างชีต "Students" อัตโนมัติถ้ายังไม่มีในไฟล์
+  if (!sheet) {
+    sheet = activeSpreadsheet.insertSheet("Students");
+    sheet.appendRow(["roll", "name"]);
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  if (data.length > 1) {
+    var headers = data[0];
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var obj = {};
+      for (var j = 0; j < headers.length; j++) {
+        obj[headers[j]] = row[j];
+      }
+      result.push(obj);
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var params = JSON.parse(e.postData.contents);
+  var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (params.action === "syncStudents") {
+    var studentSheet = activeSpreadsheet.getSheetByName("Students");
+    if (!studentSheet) {
+      studentSheet = activeSpreadsheet.insertSheet("Students");
+    } else {
+      studentSheet.clearContents();
+    }
+    
+    // เขียนหัวตารางและใส่ข้อมูลอัตโนมัติ
+    studentSheet.appendRow(["roll", "name"]);
+    params.students.forEach(function(student) {
+      studentSheet.appendRow([student.roll, student.name]);
+    });
+    
+    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  if (params.action === "saveAttendance") {
+    var attSheet = activeSpreadsheet.getSheetByName("AttendanceHistory");
+    // สร้างชีต "AttendanceHistory" อัตโนมัติถ้ายังไม่มีในไฟล์
+    if (!attSheet) {
+      attSheet = activeSpreadsheet.insertSheet("AttendanceHistory");
+      attSheet.appendRow(["Date", "Roll", "Name", "Status"]);
+    }
+    
+    params.records.forEach(function(rec) {
+      attSheet.appendRow([params.date, rec.roll, rec.name, rec.status]);
+    });
+    
+    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}</pre>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+                <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-xl font-semibold text-slate-700 transition-all">ยกเลิก</button>
+                <button onclick="saveSettings()" class="px-5 py-2 bg-brand-500 hover:bg-brand-600 rounded-xl font-semibold text-white transition-all">บันทึกตั้งค่า</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <i data-lucide="info" class="w-5 h-5 text-emerald-400" id="toast-icon"></i>
+        <span id="toast-message" class="text-sm font-semibold">ข้อความแจ้งเตือน</span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 shrink-0">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <p>&copy; 2026 Smart Attendance System. ออกแบบด้วยใจสำหรับคุณครูทุกคน</p>
+            <p class="flex items-center gap-1 text-slate-400"><i data-lucide="shield-check" class="w-4 h-4"></i> ข้อมูลของคุณปลอดภัยและบันทึกภายในเบราว์เซอร์นี้</p>
+        </div>
+    </footer>
+
+    <!-- App Logic Script -->
+    <script>
+        // --- STATE MANAGEMENT ---
+        let students = [];
+        let attendance = {}; // Structure: { "YYYY-MM-DD": { "studentRoll": "present" | "absent" | "late" | "leave" } }
+        let googleSheetUrl = "";
+
+        // On Load / Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            // Set Today's Date
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('checkin-date').value = today;
+
+            // Load from LocalStorage
+            loadDataFromLocalStorage();
+            
+            // Render UI
+            updateUI();
+            
+            // Render Lucide Icons
+            lucide.createIcons();
+        });
+
+        function loadDataFromLocalStorage() {
+            const storedStudents = localStorage.getItem('sa_students');
+            if (storedStudents) {
+                students = JSON.parse(storedStudents);
+            } else {
+                // Mock Data for onboarding
+                students = [
+                    { roll: "1", name: "เด็กชายกิตติศักดิ์ เรียนเก่ง" },
+                    { roll: "2", name: "เด็กชายณัฐพงษ์ ใจเย็น" },
+                    { roll: "3", name: "เด็กหญิงพิมพิกา มุ่งมั่น" },
+                    { roll: "4", name: "เด็กหญิงอรวรรณ เก่งภาษา" },
+                    { roll: "5", name: "เด็กหญิงธนภรณ์ รักษ์ดี" }
+                ];
+                localStorage.setItem('sa_students', JSON.stringify(students));
+            }
+
+            const storedAttendance = localStorage.getItem('sa_attendance');
+            if (storedAttendance) {
+                attendance = JSON.parse(storedAttendance);
+            }
+
+            const storedSheetUrl = localStorage.getItem('sa_g_sheet_url');
+            if (storedSheetUrl) {
+                googleSheetUrl = storedSheetUrl;
+                document.getElementById('g-sheet-url').value = googleSheetUrl;
+                updateConnectionIndicator(true);
+            } else {
+                updateConnectionIndicator(false);
+            }
+        }
+
+        function saveDataToLocalStorage() {
+            localStorage.setItem('sa_students', JSON.stringify(students));
+            localStorage.setItem('sa_attendance', JSON.stringify(attendance));
+            updateUI();
+        }
+
+        // --- NAVIGATION TAB SWITCH ---
+        function switchTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            // Remove active classes from buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-brand-700', 'shadow-sm');
+                btn.classList.add('text-white', 'hover:bg-white/10');
+            });
+
+            // Show target tab
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            // Set active classes to active tab button
+            const activeBtn = document.getElementById(`btn-tab-${tabId}`);
+            activeBtn.classList.add('bg-white', 'text-brand-700', 'shadow-sm');
+            activeBtn.classList.remove('text-white', 'hover:bg-white/10');
+
+            if (tabId === 'stats') {
+                renderStatistics();
+            }
+        }
+
+        // --- TOAST NOTIFICATION ---
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+            if (isError) {
+                toast.classList.replace('bg-slate-900', 'bg-rose-600');
+                toastIcon.setAttribute('data-lucide', 'alert-circle');
+            } else {
+                toast.classList.replace('bg-rose-600', 'bg-slate-900');
+                toastIcon.setAttribute('data-lucide', 'check-circle-2');
+            }
+            lucide.createIcons();
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // --- GOOGLE SHEET INTEGRATION CONFIG ---
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        function saveSettings() {
+            const urlInput = document.getElementById('g-sheet-url').value.trim();
+            googleSheetUrl = urlInput;
+            localStorage.setItem('sa_g_sheet_url', googleSheetUrl);
+            closeSettingsModal();
+            
+            if (googleSheetUrl) {
+                updateConnectionIndicator(true);
+                showToast("เชื่อมต่อ Google Sheet สำเร็จ!");
+            } else {
+                updateConnectionIndicator(false);
+                showToast("ยกเลิกการใช้ Google Sheet");
+            }
+        }
+
+        function updateConnectionIndicator(connected) {
+            const statusIndicator = document.getElementById('g-status-indicator');
+            const title = document.getElementById('connection-title');
+            const desc = document.getElementById('connection-desc');
+            const btnSync = document.getElementById('btn-sync');
+
+            if (connected) {
+                statusIndicator.innerHTML = `
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+                `;
+                title.innerText = "เชื่อมต่อระบบคลาวด์ Google Sheet แล้ว";
+                title.classList.add('text-emerald-700');
+                desc.innerText = "ข้อมูลนักเรียนและประวัติการเช็กชื่อสามารถซิงก์โดยตรงไปยังสเปรดชีตของคุณ";
+                btnSync.classList.remove('hidden');
+            } else {
+                statusIndicator.innerHTML = `
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+                `;
+                title.innerText = "เชื่อมต่อแบบ Local Storage (ออฟไลน์)";
+                title.classList.remove('text-emerald-700');
+                desc.innerText = "บันทึกข้อมูลในเครื่องเบื้องต้น คุณสามารถตั้งค่าเชื่อมโยงกับ Google Sheet ได้";
+                btnSync.classList.add('hidden');
+            }
+        }
+
+        async function syncWithGoogleSheet() {
+            if (!googleSheetUrl) return;
+            const btnSync = document.getElementById('btn-sync');
+            btnSync.disabled = true;
+            btnSync.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังอัปโหลด...`;
+            lucide.createIcons();
+
+            try {
+                // ซิงก์เฉพาะรายชื่อนักเรียนปัจจุบัน
+                const payload = {
+                    action: "syncStudents",
+                    students: students
+                };
+
+                const response = await fetch(googleSheetUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // Avoid CORS preflight limits with Apps Script Web Apps
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                showToast("อัปโหลดและซิงก์ข้อมูลไป Google Sheet เรียบร้อยแล้ว!");
+            } catch (err) {
+                showToast("เกิดข้อผิดพลาดในการซิงก์ข้อมูล", true);
+                console.error(err);
+            } finally {
+                btnSync.disabled = false;
+                btnSync.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4"></i> ซิงก์กับ Google Sheet`;
+                lucide.createIcons();
+            }
+        }
+
+        // --- MAIN LOGIC: ATTENDANCE CHECK-IN ---
+        function loadAttendanceForDate() {
+            const date = document.getElementById('checkin-date').value;
+            if (!date) return;
+
+            // Ensure the date object exists in our memory
+            if (!attendance[date]) {
+                attendance[date] = {};
+            }
+
+            renderCheckInList();
+            updateDashboardStats();
+        }
+
+        function renderCheckInList() {
+            const container = document.getElementById('checkin-list-container');
+            const date = document.getElementById('checkin-date').value;
+            
+            if (students.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-slate-400">
+                        <i data-lucide="users" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                        <p>ไม่มีรายชื่อนักเรียนในระบบ กรุณาเพิ่มรายชื่อที่แท็บ "จัดการนักเรียน"</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            // Sort students by roll number numerically if possible, otherwise string sort
+            const sortedStudents = [...students].sort((a, b) => {
+                const rollA = parseInt(a.roll);
+                const rollB = parseInt(b.roll);
+                if (!isNaN(rollA) && !isNaN(rollB)) return rollA - rollB;
+                return a.roll.localeCompare(b.roll);
+            });
+
+            let html = '';
+            sortedStudents.forEach(st => {
+                const currentStatus = attendance[date]?.[st.roll] || '';
+                
+                // Color mapping states
+                const isPresent = currentStatus === 'present';
+                const isAbsent = currentStatus === 'absent';
+                const isLate = currentStatus === 'late';
+                const isLeave = currentStatus === 'leave';
+
+                html += `
+                <div class="p-4 sm:px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:bg-slate-50 transition-colors">
+                    <div class="flex items-center gap-4">
+                        <span class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0">${st.roll}</span>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm sm:text-base">${st.name}</h4>
+                        </div>
+                    </div>
+                    
+                    <!-- Action buttons per student -->
+                    <div class="grid grid-cols-4 gap-2 w-full sm:w-auto">
+                        <button onclick="markAttendance('${st.roll}', 'present')" class="flex flex-col sm:flex-row items-center justify-center gap-1 py-1.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                            isPresent ? 'bg-emerald-500 text-white border-emerald-500 shadow-md scale-102' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }">
+                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                            มาเรียน
+                        </button>
+                        <button onclick="markAttendance('${st.roll}', 'absent')" class="flex flex-col sm:flex-row items-center justify-center gap-1 py-1.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                            isAbsent ? 'bg-rose-500 text-white border-rose-500 shadow-md scale-102' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            ขาด
+                        </button>
+                        <button onclick="markAttendance('${st.roll}', 'late')" class="flex flex-col sm:flex-row items-center justify-center gap-1 py-1.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                            isLate ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-102' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }">
+                            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                            สาย
+                        </button>
+                        <button onclick="markAttendance('${st.roll}', 'leave')" class="flex flex-col sm:flex-row items-center justify-center gap-1 py-1.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                            isLeave ? 'bg-blue-500 text-white border-blue-500 shadow-md scale-102' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }">
+                            <i data-lucide="calendar-x" class="w-3.5 h-3.5"></i>
+                            ลา
+                        </button>
+                    </div>
+                </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function markAttendance(roll, status) {
+            const date = document.getElementById('checkin-date').value;
+            if (!attendance[date]) attendance[date] = {};
+            
+            // Toggle logic: click active again to untoggle
+            if (attendance[date][roll] === status) {
+                delete attendance[date][roll];
+            } else {
+                attendance[date][roll] = status;
+            }
+
+            saveDataToLocalStorage();
+            renderCheckInList();
+            updateDashboardStats();
+            
+            // Auto sync to cloud if configured
+            autoSaveToGoogle(date, roll, status);
+        }
+
+        function setAllAttendance(status) {
+            const date = document.getElementById('checkin-date').value;
+            if (!attendance[date]) attendance[date] = {};
+            
+            students.forEach(st => {
+                attendance[date][st.roll] = status;
+            });
+
+            saveDataToLocalStorage();
+            renderCheckInList();
+            updateDashboardStats();
+
+            // Auto sync full batch to cloud
+            autoSaveToGoogleBatch(date);
+        }
+
+        async function autoSaveToGoogle(date, roll, status) {
+            if (!googleSheetUrl) return;
+            const student = students.find(s => s.roll === roll);
+            if (!student) return;
+
+            try {
+                const payload = {
+                    action: "saveAttendance",
+                    date: date,
+                    records: [{ roll: roll, name: student.name, status: status }]
+                };
+                
+                await fetch(googleSheetUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch(e) {
+                console.error("Auto-save cloud failed", e);
+            }
+        }
+
+        async function autoSaveToGoogleBatch(date) {
+            if (!googleSheetUrl) return;
+            
+            try {
+                const records = students.map(st => ({
+                    roll: st.roll,
+                    name: st.name,
+                    status: attendance[date]?.[st.roll] || 'unmarked'
+                }));
+
+                const payload = {
+                    action: "saveAttendance",
+                    date: date,
+                    records: records
+                };
+
+                await fetch(googleSheetUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast("บันทึกการเช็กชื่อแบบกลุ่มลง Google Sheet เรียบร้อย");
+            } catch(e) {
+                console.error("Batch Cloud failed", e);
+            }
+        }
+
+        function updateDashboardStats() {
+            const date = document.getElementById('checkin-date').value;
+            document.getElementById('stat-total-students').innerText = students.length;
+
+            if (students.length === 0) {
+                document.getElementById('stat-present-today').innerText = "0";
+                document.getElementById('stat-absent-today').innerText = "0";
+                document.getElementById('stat-rate-today').innerText = "0%";
+                return;
+            }
+
+            const activeDateRecord = attendance[date] || {};
+            let presentCount = 0;
+            let absentCount = 0;
+
+            students.forEach(st => {
+                const stat = activeDateRecord[st.roll];
+                if (stat === 'present' || stat === 'late') {
+                    presentCount++;
+                } else if (stat === 'absent') {
+                    absentCount++;
+                }
+            });
+
+            const markedCount = Object.keys(activeDateRecord).length;
+            const rate = markedCount > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+
+            document.getElementById('stat-present-today').innerText = presentCount;
+            document.getElementById('stat-absent-today').innerText = absentCount;
+            document.getElementById('stat-rate-today').innerText = `${rate}%`;
+        }
+
+        // --- STUDENT MANAGEMENT TAB LOGIC ---
+        function addStudent(event) {
+            event.preventDefault();
+            const rollInput = document.getElementById('student-roll');
+            const nameInput = document.getElementById('student-name');
+            const roll = rollInput.value.trim();
+            const name = nameInput.value.trim();
+
+            if (students.some(s => s.roll === roll)) {
+                showToast("เลขที่หรือรหัสนักเรียนนี้มีอยู่แล้วในระบบ", true);
+                return;
+            }
+
+            students.push({ roll, name });
+            saveDataToLocalStorage();
+            
+            // Reset input form
+            rollInput.value = '';
+            nameInput.value = '';
+            
+            showToast(`เพิ่ม ${name} สำเร็จ`);
+            renderStudentTable();
+            renderCheckInList();
+            updateDashboardStats();
+        }
+
+        function bulkImportStudents() {
+            const textarea = document.getElementById('bulk-names');
+            const rawNames = textarea.value.trim().split('\n');
+            if (rawNames.length === 0 || rawNames[0] === "") {
+                showToast("กรุณาป้อนรายชื่ออย่างน้อยหนึ่งบรรทัด", true);
+                return;
+            }
+
+            let lastRoll = 0;
+            if (students.length > 0) {
+                const rolls = students.map(s => parseInt(s.roll)).filter(r => !isNaN(r));
+                if (rolls.length > 0) {
+                    lastRoll = Math.max(...rolls);
+                }
+            }
+
+            let addedCount = 0;
+            rawNames.forEach(rawName => {
+                const name = rawName.trim();
+                if (name) {
+                    lastRoll++;
+                    students.push({
+                        roll: String(lastRoll),
+                        name: name
+                    });
+                    addedCount++;
+                }
+            });
+
+            saveDataToLocalStorage();
+            textarea.value = '';
+            showToast(`นำเข้าสำเร็จ ${addedCount} รายชื่อ`);
+            renderStudentTable();
+            renderCheckInList();
+            updateDashboardStats();
+        }
+
+        function deleteStudent(roll) {
+            students = students.filter(s => s.roll !== roll);
+            
+            // Also cleanup attendance record of deleted student
+            Object.keys(attendance).forEach(date => {
+                if (attendance[date][roll]) {
+                    delete attendance[date][roll];
+                }
+            });
+
+            saveDataToLocalStorage();
+            showToast("ลบข้อมูลนักเรียนเรียบร้อยแล้ว");
+            renderStudentTable();
+            renderCheckInList();
+            updateDashboardStats();
+        }
+
+        function clearAllStudents() {
+            if (confirm("คุณแน่ใจหรือไม่ที่จะลบนักเรียนทั้งหมด รวมถึงประวัติเช็กชื่อ?")) {
+                students = [];
+                attendance = {};
+                saveDataToLocalStorage();
+                showToast("ล้างรายชื่อนักเรียนทั้งหมดแล้ว");
+                renderStudentTable();
+                renderCheckInList();
+                updateDashboardStats();
+            }
+        }
+
+        function renderStudentTable() {
+            const tableBody = document.getElementById('student-table-body');
+            document.getElementById('count-student-list').innerText = students.length;
+
+            if (students.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="px-6 py-8 text-center text-slate-400">
+                            <i data-lucide="users" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                            ไม่มีรายชื่อนักเรียนในระบบ กรุณาใช้แบบฟอร์มด้านข้างเพื่อเพิ่มข้อมูล
+                        </td>
+                    </tr>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            // Sort before rendering table
+            const sortedStudents = [...students].sort((a, b) => {
+                const rollA = parseInt(a.roll);
+                const rollB = parseInt(b.roll);
+                if (!isNaN(rollA) && !isNaN(rollB)) return rollA - rollB;
+                return a.roll.localeCompare(b.roll);
+            });
+
+            let html = '';
+            sortedStudents.forEach(st => {
+                html += `
+                <tr class="hover:bg-slate-50/50 transition-colors">
+                    <td class="px-6 py-4 font-bold text-slate-600 text-center text-sm">${st.roll}</td>
+                    <td class="px-6 py-4 font-semibold text-slate-800 text-sm">${st.name}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick="deleteStudent('${st.roll}')" class="text-xs p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-semibold transition-all inline-flex items-center gap-1">
+                            <i data-lucide="user-minus" class="w-3.5 h-3.5"></i>
+                            ลบออก
+                        </button>
+                    </td>
+                </tr>
+                `;
+            });
+
+            tableBody.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        // --- TAB: STATISTICS & REPORTS LOGIC ---
+        function renderStatistics() {
+            const individualStatsList = document.getElementById('individual-stats-list');
+            const recordedDatesList = document.getElementById('recorded-dates-list');
+
+            if (students.length === 0) {
+                individualStatsList.innerHTML = `<p class="p-8 text-center text-slate-400 text-sm">ไม่มีข้อมูลเพื่อคำนวณสถิติ</p>`;
+                recordedDatesList.innerHTML = `<p class="p-8 text-center text-slate-400 text-sm">ไม่มีข้อมูลวันที่บันทึก</p>`;
+                return;
+            }
+
+            // 1. Calculate Individual Stats
+            const totalRecordedDays = Object.keys(attendance).length;
+            const studentStats = students.map(st => {
+                let present = 0;
+                let absent = 0;
+                let late = 0;
+                let leave = 0;
+
+                Object.keys(attendance).forEach(date => {
+                    const status = attendance[date][st.roll];
+                    if (status === 'present') present++;
+                    else if (status === 'absent') absent++;
+                    else if (status === 'late') late++;
+                    else if (status === 'leave') leave++;
+                });
+
+                // Total real attendance rate counting Present + Late + half of Leave perhaps? 
+                // Standard: (Present + Late) / Total Recorded Days
+                const attendedCount = present + late;
+                const attendanceRate = totalRecordedDays > 0 ? Math.round((attendedCount / totalRecordedDays) * 100) : 0;
+
+                return {
+                    roll: st.roll,
+                    name: st.name,
+                    present,
+                    absent,
+                    late,
+                    leave,
+                    attendanceRate
+                };
+            });
+
+            // Sort student stats by Attendance Rate descending
+            studentStats.sort((a, b) => b.attendanceRate - a.attendanceRate);
+
+            let individualHtml = '';
+            studentStats.forEach(st => {
+                // Color formatting for status badge
+                let colorClass = 'bg-rose-100 text-rose-700';
+                if (st.attendanceRate >= 80) colorClass = 'bg-emerald-100 text-emerald-700';
+                else if (st.attendanceRate >= 50) colorClass = 'bg-amber-100 text-amber-700';
+
+                individualHtml += `
+                <div class="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-xs shrink-0">${st.roll}</span>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">${st.name}</h4>
+                            <div class="flex flex-wrap gap-x-3 gap-y-1 text-slate-500 text-xs mt-0.5">
+                                <span class="text-emerald-600">มาเรียน: ${st.present} วัน</span>
+                                <span class="text-rose-600">ขาด: ${st.absent} วัน</span>
+                                <span class="text-amber-600">สาย: ${st.late} วัน</span>
+                                <span class="text-blue-600">ลา: ${st.leave} วัน</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <div class="w-24 bg-slate-100 rounded-full h-2 overflow-hidden shrink-0 hidden sm:block">
+                            <div class="h-full rounded-full ${st.attendanceRate >= 80 ? 'bg-emerald-500' : st.attendanceRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'}" style="width: ${st.attendanceRate}%"></div>
+                        </div>
+                        <span class="${colorClass} px-3 py-1 rounded-xl text-xs font-bold shrink-0 min-w-[65px] text-center">${st.attendanceRate}%</span>
+                    </div>
+                </div>
+                `;
+            });
+            individualStatsList.innerHTML = individualHtml;
+
+            // 2. Render Recorded Days list
+            const dates = Object.keys(attendance).sort().reverse();
+            if (dates.length === 0) {
+                recordedDatesList.innerHTML = `<p class="p-8 text-center text-slate-400 text-xs">ยังไม่มีประวัติการเช็กชื่อ</p>`;
+            } else {
+                let datesHtml = '<div class="space-y-2">';
+                dates.forEach(dt => {
+                    const stats = getQuickStatsForDate(dt);
+                    datesHtml += `
+                    <div class="p-3 hover:bg-slate-50/70 border border-slate-100 rounded-xl flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2.5">
+                            <div class="p-1.5 bg-brand-50 text-brand-500 rounded-lg shrink-0">
+                                <i data-lucide="calendar" class="w-4 h-4"></i>
+                            </div>
+                            <span class="text-sm font-semibold text-slate-700">${formatThaiDate(dt)}</span>
+                        </div>
+                        <div class="flex gap-1 text-xxs font-bold">
+                            <span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">ม: ${stats.present}</span>
+                            <span class="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">ข: ${stats.absent}</span>
+                            <span class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">ส: ${stats.late}</span>
+                            <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">ล: ${stats.leave}</span>
+                        </div>
+                    </div>
+                    `;
+                });
+                datesHtml += '</div>';
+                recordedDatesList.innerHTML = datesHtml;
+            }
+            lucide.createIcons();
+        }
+
+        function getQuickStatsForDate(dt) {
+            const records = attendance[dt] || {};
+            let present = 0, absent = 0, late = 0, leave = 0;
+            students.forEach(st => {
+                const status = records[st.roll];
+                if (status === 'present') present++;
+                else if (status === 'absent') absent++;
+                else if (status === 'late') late++;
+                else if (status === 'leave') leave++;
+            });
+            return { present, absent, late, leave };
+        }
+
+        // Help utility function to format Thai date nicely
+        function formatThaiDate(dateString) {
+            try {
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                const dt = new Date(dateString);
+                return dt.toLocaleDateString('th-TH', options);
+            } catch(e) {
+                return dateString;
+            }
+        }
+
+        // --- EXPORT TO EXCEL ---
+        function exportToExcel() {
+            if (Object.keys(attendance).length === 0) {
+                showToast("ยังไม่มีประวัติการเช็กชื่อให้ส่งออก", true);
+                return;
+            }
+
+            // Create modern structured dataset
+            const dates = Object.keys(attendance).sort();
+            
+            // Build headers: [ "เลขที่", "ชื่อ-นามสกุล", "วันที่ 1", "วันที่ 2", ..., "ร้อยละการเข้าเรียน" ]
+            const headers = ["เลขที่", "ชื่อ-นามสกุล", ...dates.map(dt => formatThaiDate(dt)), "จำนวนวันที่เช็ก", "มาเรียนจริง (มา+สาย)", "ร้อยละการเข้าเรียน"];
+            
+            const rows = students.map(st => {
+                let presentAndLate = 0;
+                let activeDays = 0;
+                const rowData = {
+                    "เลขที่": st.roll,
+                    "ชื่อ-นามสกุล": st.name
+                };
+
+                dates.forEach(dt => {
+                    const status = attendance[dt][st.roll];
+                    let label = "ยังไม่เช็ก";
+                    
+                    if (status) {
+                        activeDays++;
+                        if (status === 'present') {
+                            label = "มาเรียน";
+                            presentAndLate++;
+                        } else if (status === 'absent') {
+                            label = "ขาดเรียน";
+                        } else if (status === 'late') {
+                            label = "สาย";
+                            presentAndLate++;
+                        } else if (status === 'leave') {
+                            label = "ลา";
+                        }
+                    }
+                    rowData[formatThaiDate(dt)] = label;
+                });
+
+                const rate = activeDays > 0 ? Math.round((presentAndLate / activeDays) * 100) : 0;
+                rowData["จำนวนวันที่เช็ก"] = activeDays;
+                rowData["มาเรียนจริง (มา+สาย)"] = presentAndLate;
+                rowData["ร้อยละการเข้าเรียน"] = `${rate}%`;
+
+                return rowData;
+            });
+
+            // Convert dataset array into spreadsheet format
+            const worksheet = XLSX.utils.json_to_sheet(rows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "รายงานการเข้าเรียน");
+
+            // Save the Workbook automatically
+            const fileName = `รายงานการเข้าเรียน_SmartAttendance_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+
+            showToast("ดาวน์โหลดไฟล์รายงาน Excel เรียบร้อยแล้ว!");
+        }
+
+        // General global UI updater
+        function updateUI() {
+            renderCheckInList();
+            renderStudentTable();
+            updateDashboardStats();
+        }
+    </script>
+</body>
+</html>
